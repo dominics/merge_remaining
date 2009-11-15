@@ -4,7 +4,7 @@
 #
 
 # Repository location: should be a URL to the root of your SVN repository, no trailing slash
-repository="https://svn.sella.co.nz/main"
+repository="https://svn.example.org/main"
 
 # Default SVN user: username of the SVN user to show commits from
 show_user=`whoami`

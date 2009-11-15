@@ -1,0 +1,180 @@
+#!/bin/bash
+#
+# Shows elegible merges from trunk to the given branch in a nice format
+#
+
+# Repository location: should be a URL to the root of your SVN repository, no trailing slash
+repository="https://svn.sella.co.nz/main"
+
+# Default SVN user: username of the SVN user to show commits from
+show_user=`whoami`
+
+###############################################################################
+# That should be it. Everything below this line shouldn't need to be changed. #
+###############################################################################
+
+# Usage
+function usage {
+	echo "Usage: merge_remaining [--to] <branch_name> [--from <branch_name>] [--user <username>] [--all]"
+	echo "Shows revisions eligible to be merged into <branch_name> from another branch"
+	echo " Options:"
+	echo "    -h  --help                Display this message"
+	echo "    -t  --to   <branch_name>  Show changes to be applied to the specified branch"
+	echo "    -f  --from <branch_name>  Show changes from the specified branch (default: trunk)"
+	echo "    -u  --user <username>     Show only changes by the specified user (default: this user)"
+       	echo "    -a  --all                 Show changes by all users"	
+	echo "    -v  --verbose             Be noisy"
+	echo "    -q  --quiet               Be quiet, and don't show log entries"
+}
+
+# Quiet tput
+_tput() {
+	tput $* 2> /dev/null
+}
+
+# Formatting
+_bold=`_tput -T $TERM bold`
+_reset=`_tput -T $TERM sgr0`
+
+# Color definitions
+_blue=`_tput -T $TERM setf 1 || _tput -T $TERM setaf 4`
+_green=`_tput -T $TERM setf 2 || _tput -T $TERM setaf 2`
+_cyan=`_tput -T $TERM setf 3 || _tput -T $TERM setaf 6`
+_red=`_tput -T $TERM setf 4 || _tput -T $TERM setaf 1`
+_magenta=`_tput -T $TERM setf 5 || _tput -T $TERM setaf 5`
+_yellow=`_tput -T $TERM setf 6 || _tput -T $TERM setaf 3`
+_white=`_tput -T $TERM setf 7 || _tput -T $TERM setaf 7`
+
+# Default settings
+to_branch="staging"
+to_specified=-1
+from_branch="trunk"
+show_all=-1
+verbose=-1
+quiet=-1
+
+# Process arguments
+OPTS=`getopt -o h,t:,f:,u:,a,v,q --long help,to:,from:,user:,all,verbose,quiet -n 'merge_remaining' -- "$@"`
+if [[ $? -ne 0 ]]; then
+        echo "Option parsing failed" >&2
+        usage
+        exit -2;
+fi
+
+eval set -- "$OPTS"
+
+while true; do
+        case "$1" in
+                -h|--help) usage; exit 0; shift;;
+		-t|--to) shift; to_branch=$1; to_specified=0; shift;;
+		-f|--from) shift; from_branch=$1; shift;;
+		-u|--user) shift; show_user=$1; shift;;
+		-a|--all) show_all=0; shift;;
+		-v|--verbose) verbose=0; shift;;
+		-q|--quiet) quiet=0; shift;;
+                --) shift; break;;
+                *) echo "Option parsing failed" >&2; exit -2;;
+        esac
+done
+
+# If to_branch is unspecified, use the first argument
+if [[ $to_specified -ne 0 && -n $1 ]]; then
+	to_branch=$1
+fi
+
+# Process arguments
+if [[ $to_branch != 'trunk' ]]; then
+	to_branch="branches/$to_branch"
+fi
+if [[ $from_branch != 'trunk' ]]; then
+	from_branch="branches/$from_branch"
+fi
+
+to_url="$repository/$to_branch"
+from_url="$repository/$from_branch"
+
+# Announce
+echo "Finding eligible changes from $_magenta$_bold$from_branch$_reset to $_magenta$_bold$to_branch$_reset"
+
+if [[ $show_all -ne 0 ]]; then
+	echo "Showing commits from $_magenta$_bold$show_user$_reset only"
+else
+	echo "Showing commits from $_magenta${_bold}all users$_reset"
+fi
+
+if [[ $verbose -eq 0 ]]; then
+	echo "From URL: $from_url"
+	echo "To URL: $to_url"
+	echo "Command: svn mergeinfo $from_url $to_url --show-revs eligible"
+fi
+
+echo 
+echo
+
+# Separator
+IFS="
+"
+
+# Get eligible revisions; rest is formatting
+revisions=$(svn mergeinfo $from_url $to_url --show-revs eligible | tr -d 'r')
+
+# Get revision range
+first_revision=$(echo $revisions | tr ' ' '\n' | head -n 1)
+last_revision=$(echo $revisions | tr ' ' '\n' | tail -n 1)
+
+if [[ $verbose -eq 0 ]]; then
+	echo "Revisions: $revisions" | sed -r 's/^([^R])/           \1/'
+	echo "Getting log from $first_revision to $last_revision"
+	echo
+	echo
+fi
+
+# Get log
+log=`svn log -r $first_revision:$last_revision $from_url`
+
+for revision in $revisions; do
+	if [[ $show_all -eq 0 ]]; then
+		start_line=$(echo "$log" | grep -n -m 1 "r$revision | " | grep -oe '^[0-9]*')
+	else
+		start_line=$(echo "$log" | grep -n -m 1 "r$revision | $show_user" | grep -oe '^[0-9]*')
+	fi
+
+	if [[ -n "$start_line" ]]; then
+		if [[ $quiet -eq 0 ]]; then
+			echo -n "$revision,"
+			continue
+		fi
+
+		output=$(echo "$log" | tail -n +$start_line | head -n 10)
+	
+		for line in $output; do
+			separator=$(echo "$line" | grep -n -m 1 '^--')
+			if [[ -n $separator ]]; then
+				break;
+			fi
+			echo "$line" | sed -r 's/^([^r])/  \1/'
+		done
+		
+		echo
+	fi
+done
+
+if [[ $quiet -eq 0 ]]; then
+	echo
+	echo
+fi
+
+echo
+
+# Announce useful stuff
+echo "To see the files changed in one of these revisions, do:"
+echo "  svn log -vr REVISION $from_url"
+echo "To see the lines changes, do:"
+echo "  svn diff -c REVISION $from_url | less"
+echo
+echo "To merge a revision from $from_branch to $to_branch, go to a working copy of $to_branch and do:"
+echo "  svn merge -c REVISION $from_url"
+echo "If you're ${_bold}sure$_reset it has already been merged, go to a working copy of $to_branch and do:"
+echo "  svn merge -c REVISION $from_url --record-only"
+
+exit 0

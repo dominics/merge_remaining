@@ -2,12 +2,21 @@
 #
 # Shows elegible merges from trunk to the given branch in a nice format
 #
+# See http://wiki.github.com/dominics/merge_remaining for usage information
+# Clone http://github.com/dominics/merge_remaining to contribute
+# Pull requests to dominics at github or dominic at varspool.com
+#
+# Edit the lines below to match your Subversion setup
 
-# Repository location: should be a URL to the root of your SVN repository, no trailing slash
+# Repository location: should be a URL to the root of your Subversion repository, no trailing slash
 repository="https://svn.example.org/main"
 
-# Default SVN user: username of the SVN user to show commits from
+# Default Subversion user: username of the Subversion user to show commits from
 show_user=`whoami`
+
+# Default branches: if the user doesn't specify branches, which commits to show
+from_branch="trunk"
+to_branch="release"
 
 ###############################################################################
 # That should be it. Everything below this line shouldn't need to be changed. #
@@ -46,9 +55,7 @@ _yellow=`_tput -T $TERM setf 6 || _tput -T $TERM setaf 3`
 _white=`_tput -T $TERM setf 7 || _tput -T $TERM setaf 7`
 
 # Default settings
-to_branch="staging"
 to_specified=-1
-from_branch="trunk"
 show_all=-1
 verbose=-1
 quiet=-1
